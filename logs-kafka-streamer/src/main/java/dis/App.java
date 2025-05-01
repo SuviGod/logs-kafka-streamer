@@ -25,7 +25,7 @@ public class App {
         logger.debug("using input folder: {}", args[0]);
 
         // Collect all CSV files in the game-logs folder
-        File[] logFiles = new File(args[0]).listFiles((dir, name) -> name.endsWith(".csv"));
+        File[] logFiles = new File(args[0]).listFiles((_, name) -> name.endsWith(".csv"));
         if (logFiles == null || logFiles.length == 0) {
             logger.info("No CSV files found in the folder: {}", args[0]);
             return;
