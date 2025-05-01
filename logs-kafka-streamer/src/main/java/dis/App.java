@@ -8,10 +8,13 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
-import java.nio.file.*;
+import java.util.Arrays;
+import java.util.Objects;
 import java.util.Properties;
-import java.util.stream.Stream;
 
 public class App {
 
@@ -21,6 +24,13 @@ public class App {
 
         logger.debug("using input folder: {}", args[0]);
 
+        // Collect all CSV files in the game-logs folder
+        File[] logFiles = new File(args[0]).listFiles((dir, name) -> name.endsWith(".csv"));
+        if (logFiles == null || logFiles.length == 0) {
+            logger.info("No CSV files found in the folder: {}", args[0]);
+            return;
+        }
+
         // Create the producer
         // Set up the producer properties
         Properties props = new Properties();
@@ -28,36 +38,79 @@ public class App {
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
+        BufferedReader[] readers = null;
+        String[] topics = new String[logFiles.length];
+        long startTime = System.nanoTime();
+
         try (Producer<String, String> producer = new KafkaProducer<>(props)) {
-            Path path = Paths.get(args[0]);
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
-                for (Path entry : stream) {
-                    if (Files.isRegularFile(entry)) {
-                        logger.info("starting to stream file: {}", entry.getFileName());
-                        streamFile(entry, producer);
-                        logger.info("finished to stream file: {}", entry.getFileName());
-                    }
+            readers = new BufferedReader[logFiles.length];
+            for (int i = 0; i < readers.length; i++) {
+                try {
+                    readers[i] = new BufferedReader(new FileReader(logFiles[i]));
+                    String[] parts = logFiles[i].getName().split("_");
+                    topics[i] = "game." + parts[parts.length - 1].split("\\.")[0].trim();
+                    logger.info("Going to stream data from file: {}, topic: {}", logFiles[i], topics[i]);
+                }
+                catch (IOException e) {
+                    logger.error(e.getMessage());
                 }
             }
+
+            int ticks = 0;
+            int ticksStepDelay = 1000 / 128;
+            int counter = 0;
+
+            // skip headers;
+            for (BufferedReader reader : readers) {
+                reader.readLine();
+            }
+
+            // read first line
+            String[] lines = new String[readers.length];
+            for (int i = 0; i < readers.length; i++) {
+                lines[i] = readers[i].readLine();
+            }
+
+            do {
+                for (int i = 0; i < lines.length; i++) {
+                    if (lines[i] == null) {
+                        continue;
+                    }
+                    int tick = Integer.parseInt(lines[i].split(",")[1]);
+                    while (tick == ticks) {
+                        String topic = topics[i];
+                        long elapsedSeconds = (System.nanoTime() - startTime) / 1_000_000_000;
+                        String line = lines[i] + "," + elapsedSeconds;
+                        producer.send(new ProducerRecord<>(topic, Integer.toString(counter++), line));
+                        logger.info("sending message to topic: {}, tick: {}, line: {}", topic, tick, line);
+                        lines[i] = readers[i].readLine();
+                        if (lines[i] == null) {
+                            tick = -1;
+                        }
+                        else {
+                            tick = Integer.parseInt(lines[i].split(",")[1]);
+                        }
+                    }
+                }
+                ticks++;
+                Thread.sleep(ticksStepDelay);
+            }
+            while (Arrays.stream(lines).allMatch(Objects::nonNull));
+
+            logger.info("Finished streaming data from files: {}", Arrays.toString(logFiles));
         }
-        catch (IOException | DirectoryIteratorException e) {
+        catch (Exception e) {
             logger.error(e.getMessage());
         }
-    }
-
-    private static void streamFile(Path filePath, Producer<String, String> producer) throws IOException {
-        String[] parts = filePath.getFileName().toString().split("_");
-        String topic = "game." + parts[parts.length - 1].split("\\.")[0].trim();
-        try (Stream<String> lines = Files.lines(filePath)) {
-            int counter = 0;
-            for (String line : lines.toList()) {
-                // skip headers.
-                if (counter == 0) {
-                    counter++;
-                    continue;
+        finally {
+            if (readers != null) {
+                for (BufferedReader reader : readers) {
+                    try {
+                        reader.close();
+                    } catch (IOException e) {
+                        logger.error(e.getMessage());
+                    }
                 }
-                producer.send(new ProducerRecord<>(topic, Integer.toString(counter), line));
-                counter++;
             }
         }
     }
