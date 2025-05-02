@@ -230,6 +230,7 @@ public class App {
         // Since we're now working with a static DataFrame (inside foreachBatch),
         // multiple aggregations are allowed
         Dataset<Row> aggKillsDF = killsDF
+            .filter(col("killer_steamid").isNotNull())  // Filter out NULL killer_steamid
             .groupBy("killer_steamid")
             .agg(
                 // Basic kill counts
@@ -238,33 +239,49 @@ public class App {
             );
 
         Dataset<Row> aggDeathsDF = killsDF
+            .filter(col("victim_steamid").isNotNull())  // Filter out NULL victim_steamid
             .groupBy("victim_steamid")
             .agg(
                 count("*").as("deaths")
             );
 
         Dataset<Row> aggAssistsDF = killsDF
+            .filter(col("assister_steamid").isNotNull())  // Filter out NULL assister_steamid
             .groupBy("assister_steamid")
             .agg(
                 count("*").as("assists")
             );
 
-        // Join all statistics together - use explicit column references to avoid ambiguity
-        Dataset<Row> joinedDF = aggKillsDF
-            .join(aggDeathsDF, aggKillsDF.col("killer_steamid").equalTo(aggDeathsDF.col("victim_steamid")), "full_outer")
-            .drop(aggDeathsDF.col("victim_steamid"))
-            .join(aggAssistsDF, aggKillsDF.col("killer_steamid").equalTo(aggAssistsDF.col("assister_steamid")), "full_outer")
+        // Start with kills as the base and use left outer joins
+        // This ensures we only get rows with valid killer_steamid
+        Dataset<Row> joinedDF = aggKillsDF;
+        
+        // Join with deaths data
+        joinedDF = joinedDF
+            .join(aggDeathsDF, 
+                  joinedDF.col("killer_steamid").equalTo(aggDeathsDF.col("victim_steamid")), 
+                  "left_outer")
+            .drop(aggDeathsDF.col("victim_steamid"));
+        
+        // Join with assists data
+        joinedDF = joinedDF
+            .join(aggAssistsDF, 
+                  joinedDF.col("killer_steamid").equalTo(aggAssistsDF.col("assister_steamid")), 
+                  "left_outer")
             .drop(aggAssistsDF.col("assister_steamid"));
             
         // Get player names from the original DataFrame
         Dataset<Row> additionalColumnsDF = killsDF
+            .filter(col("killer_steamid").isNotNull())  // Filter out NULL killer_steamid
             .select("killer_steamid", "killer_name", "timestamp_seconds")
             .withColumnRenamed("killer_name", "player_name")
             .dropDuplicates("killer_steamid");
             
-        // Join with player names - use explicit column references to avoid ambiguity
+        // Join with player names
         joinedDF = joinedDF
-            .join(additionalColumnsDF, joinedDF.col("killer_steamid").equalTo(additionalColumnsDF.col("killer_steamid")), "left_outer")
+            .join(additionalColumnsDF, 
+                  joinedDF.col("killer_steamid").equalTo(additionalColumnsDF.col("killer_steamid")), 
+                  "inner")  // Use inner join to ensure we have player names
             .drop(additionalColumnsDF.col("killer_steamid"))
             // Fill nulls with zeros for metrics
             .na().fill(0, new String[]{"kills", "deaths", "assists", "headshots"})
@@ -281,7 +298,11 @@ public class App {
             )
             .withColumnRenamed("killer_steamid", "player_id");
 
-        return joinedDF.select("player_id", "player_name", "kills", "deaths", "assists", "kd_ratio", "headshot_percentage", "timestamp_seconds");
+        // Final check to ensure no NULL player_ids
+        joinedDF = joinedDF.filter(col("player_id").isNotNull());
+
+        return joinedDF
+                .select("player_id", "player_name", "kills", "deaths", "assists", "kd_ratio", "headshot_percentage", "timestamp_seconds");
     }
 
     /**
