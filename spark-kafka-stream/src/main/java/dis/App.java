@@ -1,7 +1,6 @@
 package dis;
 
 import org.apache.spark.sql.*;
-import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.StreamingQueryException;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
@@ -39,37 +38,49 @@ public class App {
 
         logger.info("Spark session initialized");
 
-        // Define schemas for the CS:GO game data
         StructType killsSchema = defineKillsSchema();
-        StructType damagesSchema = defineDamagesSchema();
-
-        // Read from Kafka - kills topic
         Dataset<Row> killsKafkaDF = readFromKafka(spark, KAFKA_TOPIC_KILLS);
-        
-        // Read from Kafka - damages topic
-        Dataset<Row> damagesKafkaDF = readFromKafka(spark, KAFKA_TOPIC_DAMAGES);
-
-        // Process the kills data
         Dataset<Row> processedKillsDF = processKillsData(killsKafkaDF, killsSchema);
+        
+        // Use foreachBatch to process kills data
+        processedKillsDF
+            .writeStream()
+            .foreachBatch((batchDF, batchId) -> {
+                if (!batchDF.isEmpty()) {
+                    // Calculate kill stats for this batch
+                    Dataset<Row> playerKillStatsDF = calculatePlayerStats(batchDF);
+                    
+                    // Write kill stats to PostgreSQL
+                    writeStaticDataToPostgres(playerKillStatsDF, "player_stats");
+                    
+                    logger.info("Processed batch {} for kills data", batchId);
+                }
+            })
+            .outputMode("update")
+            .option("checkpointLocation", CHECKPOINT_LOCATION + "/kills")
+            .start();
 
-        // Process the damages data
+        StructType damagesSchema = defineDamagesSchema();
+        Dataset<Row> damagesKafkaDF = readFromKafka(spark, KAFKA_TOPIC_DAMAGES);
         Dataset<Row> processedDamagesDF = processDamagesData(damagesKafkaDF, damagesSchema);
-
-        // Calculate player statistics
-        Dataset<Row> playerKillStatsDF = calculatePlayerKillStats(processedKillsDF);
-        Dataset<Row> playerDamageStatsDF = calculatePlayerDamageStats(processedDamagesDF);
-        Dataset<Row> teamKillStatsDF = calculateTeamKillStats(processedKillsDF);
-        Dataset<Row> teamDamageStatsDF = calculateTeamDamageStats(processedDamagesDF);
-        Dataset<Row> weaponStatsDF = calculateWeaponStats(processedKillsDF, processedDamagesDF);
-
-        // Write statistics to PostgreSQL
-        StreamingQuery killsQuery = writeToPostgres(processedKillsDF, "kills");
-        StreamingQuery damagesQuery = writeToPostgres(processedDamagesDF, "damages");
-        StreamingQuery playerKillStatsQuery = writeToPostgres(playerKillStatsDF, "player_kill_stats");
-        StreamingQuery playerDamageStatsQuery = writeToPostgres(playerDamageStatsDF, "player_damage_stats");
-        StreamingQuery teamKillStatsQuery = writeToPostgres(teamKillStatsDF, "team_kill_stats");
-        StreamingQuery teamDamageStatsQuery = writeToPostgres(teamDamageStatsDF, "team_damage_stats");
-        StreamingQuery weaponStatsQuery = writeToPostgres(weaponStatsDF, "weapon_stats");
+        
+        // Use foreachBatch to process damages data
+        processedDamagesDF
+            .writeStream()
+            .foreachBatch((batchDF, batchId) -> {
+                if (!batchDF.isEmpty()) {
+                    // Calculate damage stats for this batch
+                    Dataset<Row> playerDamageStatsDF = calculatePlayerDamageStats(batchDF);
+                    
+                    // Write damage stats to PostgreSQL
+                    writeStaticDataToPostgres(playerDamageStatsDF, "player_damage_stats");
+                    
+                    logger.info("Processed batch {} for damages data", batchId);
+                }
+            })
+            .outputMode("update")
+            .option("checkpointLocation", CHECKPOINT_LOCATION + "/damages")
+            .start();
 
         // Wait for the queries to terminate
         spark.streams().awaitAnyTermination();
@@ -123,7 +134,8 @@ public class App {
                 DataTypes.createStructField("is_through_smoke", DataTypes.IntegerType, true),
                 DataTypes.createStructField("is_no_scope", DataTypes.IntegerType, true),
                 DataTypes.createStructField("distance", DataTypes.DoubleType, true),
-                DataTypes.createStructField("match_checksum", DataTypes.StringType, true)
+                DataTypes.createStructField("match_checksum", DataTypes.StringType, true),
+                DataTypes.createStructField("timestamp_seconds", DataTypes.LongType, true)
         });
     }
     
@@ -154,7 +166,8 @@ public class App {
                 DataTypes.createStructField("weapon_class", DataTypes.StringType, true),
                 DataTypes.createStructField("hitgroup", DataTypes.IntegerType, true),
                 DataTypes.createStructField("weapon_unique_id", DataTypes.StringType, true),
-                DataTypes.createStructField("match_checksum", DataTypes.StringType, true)
+                DataTypes.createStructField("match_checksum", DataTypes.StringType, true),
+                DataTypes.createStructField("timestamp_seconds", DataTypes.LongType, true)
         });
     }
 
@@ -182,37 +195,10 @@ public class App {
 
         // Parse CSV string into structured data using SQL expression
         String schemaDDL = schema.toDDL();
-        Dataset<Row> parsedDF = valueDF.selectExpr(
+
+        return valueDF.selectExpr(
             "from_csv(csv_data, '" + schemaDDL + "', map('header', 'true', 'delimiter', ',')) as parsed_data"
         ).select("parsed_data.*");
-
-        // Apply transformations specific to game data
-        // Add processing timestamp
-        // Calculate kill distance in meters (divide by 10 to convert game units)
-        // Create a weapon category column
-        // Flag for special kills
-
-        return parsedDF
-                // Add processing timestamp
-                .withColumn("processing_timestamp", current_timestamp())
-                // Calculate kill distance in meters (divide by 10 to convert game units)
-                .withColumn("distance_meters", col("distance").divide(10))
-                // Create a weapon category column
-                .withColumn("weapon_category",
-                    when(col("weapon_type").equalTo("rifle"), "primary")
-                    .when(col("weapon_type").equalTo("pistol"), "secondary")
-                    .when(col("weapon_type").equalTo("smg"), "primary")
-                    .when(col("weapon_type").equalTo("shotgun"), "primary")
-                    .when(col("weapon_type").equalTo("machinegun"), "primary")
-                    .when(col("weapon_type").equalTo("sniper"), "primary")
-                    .otherwise("other"))
-                // Flag for special kills
-                .withColumn("special_kill",
-                    when(col("headshot").equalTo(1), true)
-                    .when(col("is_through_smoke").equalTo(1), true)
-                    .when(col("is_no_scope").equalTo(1), true)
-                    .when(col("penetrated_objects").gt(0), true)
-                    .otherwise(false));
     }
     
     /**
@@ -230,88 +216,72 @@ public class App {
         ).select("parsed_data.*");
 
         // Apply transformations specific to damage data
-        // Add processing timestamp
-        // Calculate damage dealt
-        // Calculate armor damage
-        // Determine if it was a lethal hit
-        // Categorize hitgroup (1=head, 2=chest, etc.)
-
         return parsedDF
-                // Add processing timestamp
-                .withColumn("processing_timestamp", current_timestamp())
                 // Calculate damage dealt
-                .withColumn("damage_dealt", col("victim_health").minus(col("victim_new_health")))
-                // Calculate armor damage
-                .withColumn("armor_damage", col("victim_armor").minus(col("victim_new_armor")))
-                // Determine if it was a lethal hit
-                .withColumn("is_lethal_hit", col("victim_new_health").equalTo(0))
-                // Categorize hitgroup (1=head, 2=chest, etc.)
-                .withColumn("hitgroup_name",
-                    when(col("hitgroup").equalTo(1), "head")
-                    .when(col("hitgroup").equalTo(2), "chest")
-                    .when(col("hitgroup").equalTo(3), "stomach")
-                    .when(col("hitgroup").equalTo(4), "left_arm")
-                    .when(col("hitgroup").equalTo(5), "right_arm")
-                    .when(col("hitgroup").equalTo(6), "left_leg")
-                    .when(col("hitgroup").equalTo(7), "right_leg")
-                    .otherwise("other"));
+                .withColumn("damage_dealt", col("victim_health").minus(col("victim_new_health")));
     }
 
     /**
      * Calculate player kill statistics
      * Aggregates kill data to provide insights on player performance
+     * Now works with static DataFrames inside foreachBatch
      */
-    private static Dataset<Row> calculatePlayerKillStats(Dataset<Row> killsDF) {
-        // Group by killer and calculate various kill statistics
-        // Basic kill counts
-        // Victim-based statistics
-        // Weapon statistics
-        // Round statistics
-        // Calculate average kill distance
-        // Calculate derived metrics
-        // Sort by total kills descending
-
-        return killsDF
-            .groupBy("killer_steamid", "killer_name", "killer_team_name")
+    private static Dataset<Row> calculatePlayerStats(Dataset<Row> killsDF) {
+        // Since we're now working with a static DataFrame (inside foreachBatch),
+        // multiple aggregations are allowed
+        Dataset<Row> aggKillsDF = killsDF
+            .groupBy("killer_steamid")
             .agg(
                 // Basic kill counts
-                count("*").as("total_kills"),
-                sum(when(col("headshot").equalTo(1), 1).otherwise(0)).as("headshot_kills"),
-                sum(when(col("is_through_smoke").equalTo(1), 1).otherwise(0)).as("through_smoke_kills"),
-                sum(when(col("is_no_scope").equalTo(1), 1).otherwise(0)).as("no_scope_kills"),
-                sum(when(col("penetrated_objects").gt(0), 1).otherwise(0)).as("wallbang_kills"),
-                sum(when(col("is_flash_assist").equalTo(1), 1).otherwise(0)).as("flash_assisted_kills"),
-                sum(when(col("is_trade_kill").equalTo(1), 1).otherwise(0)).as("trade_kills"),
+                count("*").as("kills"),
+                sum(when(col("headshot").equalTo(1), 1).otherwise(0)).as("headshots")
+            );
 
-                // Victim-based statistics
-                approx_count_distinct("victim_steamid").as("unique_victims"),
+        Dataset<Row> aggDeathsDF = killsDF
+            .groupBy("victim_steamid")
+            .agg(
+                count("*").as("deaths")
+            );
 
-                // Weapon statistics
-                collect_set("weapon_name").as("weapons_used"),
+        Dataset<Row> aggAssistsDF = killsDF
+            .groupBy("assister_steamid")
+            .agg(
+                count("*").as("assists")
+            );
 
-                // Round statistics
-                approx_count_distinct("round").as("rounds_with_kills"),
-
-                // Calculate average kill distance
-                avg("distance").as("avg_kill_distance")
-            )
+        // Join all statistics together - use explicit column references to avoid ambiguity
+        Dataset<Row> joinedDF = aggKillsDF
+            .join(aggDeathsDF, aggKillsDF.col("killer_steamid").equalTo(aggDeathsDF.col("victim_steamid")), "full_outer")
+            .drop(aggDeathsDF.col("victim_steamid"))
+            .join(aggAssistsDF, aggKillsDF.col("killer_steamid").equalTo(aggAssistsDF.col("assister_steamid")), "full_outer")
+            .drop(aggAssistsDF.col("assister_steamid"));
+            
+        // Get player names from the original DataFrame
+        Dataset<Row> additionalColumnsDF = killsDF
+            .select("killer_steamid", "killer_name", "timestamp_seconds")
+            .withColumnRenamed("killer_name", "player_name")
+            .dropDuplicates("killer_steamid");
+            
+        // Join with player names - use explicit column references to avoid ambiguity
+        joinedDF = joinedDF
+            .join(additionalColumnsDF, joinedDF.col("killer_steamid").equalTo(additionalColumnsDF.col("killer_steamid")), "left_outer")
+            .drop(additionalColumnsDF.col("killer_steamid"))
+            // Fill nulls with zeros for metrics
+            .na().fill(0, new String[]{"kills", "deaths", "assists", "headshots"})
             // Calculate derived metrics
             .withColumn("headshot_percentage",
-                when(col("total_kills").gt(0),
-                    round(col("headshot_kills").divide(col("total_kills")).multiply(100), 2)
+                when(col("kills").gt(0),
+                    round(col("headshots").divide(col("kills")).multiply(100), 2)
                 ).otherwise(0.0)
             )
-            .withColumn("special_kills",
-                col("headshot_kills")
-                .plus(col("through_smoke_kills"))
-                .plus(col("no_scope_kills"))
-                .plus(col("wallbang_kills"))
+            .withColumn("kd_ratio",
+                when(col("deaths").gt(0),
+                    round(col("kills").divide(col("deaths")), 2)
+                ).otherwise(col("kills")) // If deaths=0, kd_ratio = kills
             )
-            .withColumn("special_kill_percentage",
-                when(col("total_kills").gt(0),
-                    round(col("special_kills").divide(col("total_kills")).multiply(100), 2)
-                ).otherwise(0.0)
-            );
+            .withColumnRenamed("killer_steamid", "player_id");
+
+        return joinedDF.select("player_id", "player_name", "kills", "deaths", "assists", "kd_ratio", "headshot_percentage", "timestamp_seconds");
     }
 
     /**
@@ -319,244 +289,76 @@ public class App {
      * Aggregates damage data to provide insights on player performance
      */
     private static Dataset<Row> calculatePlayerDamageStats(Dataset<Row> damagesDF) {
-        // Group by attacker and calculate various damage statistics
-        // Basic damage counts
-        // Hitgroup statistics
-        // Victim-based statistics
-        // Weapon statistics
-        // Round statistics
-        // Average damage per hit
-        // Calculate derived metrics
-        // Sort by total damage dealt descending
-
         return damagesDF
-            .groupBy("attacker_steamid", "attacker_team_name")
+            .groupBy("attacker_steamid")
             .agg(
-                // Basic damage counts
-                count("*").as("total_hits"),
-                sum("damage_dealt").as("total_damage_dealt"),
-                sum("armor_damage").as("total_armor_damage"),
-                sum(when(col("is_lethal_hit").equalTo(true), 1).otherwise(0)).as("lethal_hits"),
-
-                // Hitgroup statistics
-                sum(when(col("hitgroup").equalTo(1), 1).otherwise(0)).as("headshots"),
-                sum(when(col("hitgroup").equalTo(2), 1).otherwise(0)).as("chest_hits"),
-                sum(when(col("hitgroup").equalTo(3), 1).otherwise(0)).as("stomach_hits"),
-                sum(when(col("hitgroup").equalTo(4).or(col("hitgroup").equalTo(5)), 1).otherwise(0)).as("arm_hits"),
-                sum(when(col("hitgroup").equalTo(6).or(col("hitgroup").equalTo(7)), 1).otherwise(0)).as("leg_hits"),
-
-                // Victim-based statistics
-                approx_count_distinct("victim_steamid").as("unique_victims"),
-
-                // Weapon statistics
-                collect_set("weapon_name").as("weapons_used"),
-
-                // Round statistics
-                approx_count_distinct("round").as("rounds_with_damage"),
-
-                // Average damage per hit
-                avg("damage_dealt").as("avg_damage_per_hit")
+                sum("damage_dealt").as("total_damage"),
+                approx_count_distinct("round").as("rounds")
             )
-            // Calculate derived metrics
-            .withColumn("headshot_percentage",
-                when(col("total_hits").gt(0),
-                    round(col("headshots").divide(col("total_hits")).multiply(100), 2)
+            .withColumn("damage_per_round",
+                when(col("rounds").gt(0),
+                    round(col("total_damage").divide(col("rounds")), 2)
                 ).otherwise(0.0)
             )
-            .withColumn("lethal_hit_percentage",
-                when(col("total_hits").gt(0),
-                    round(col("lethal_hits").divide(col("total_hits")).multiply(100), 2)
-                ).otherwise(0.0)
-            );
-    }
-
-    // Add these two new methods
-    /**
-     * Calculate team kill statistics
-     * Aggregates kill data by team
-     */
-    private static Dataset<Row> calculateTeamKillStats(Dataset<Row> killsDF) {
-        return killsDF
-            .groupBy("killer_team_name")
-            .agg(
-                count("*").as("total_kills"),
-                sum(when(col("headshot").equalTo(1), 1).otherwise(0)).as("headshot_kills"),
-                approx_count_distinct("killer_steamid").as("active_players"),
-                avg("distance").as("avg_kill_distance"),
-                max("distance").as("max_kill_distance"),
-                sum(when(col("special_kill"), 1).otherwise(0)).as("special_kills")
-            )
-            .withColumn("headshot_percentage", 
-                when(col("total_kills").gt(0), 
-                    round(col("headshot_kills").divide(col("total_kills")).multiply(100), 2)
-                ).otherwise(0.0)
-            )
-            .withColumn("special_kill_percentage", 
-                when(col("total_kills").gt(0), 
-                    round(col("special_kills").divide(col("total_kills")).multiply(100), 2)
-                ).otherwise(0.0)
-            );
+            .withColumnRenamed("attacker_steamid", "player_id");
     }
 
     /**
-     * Calculate team damage statistics
-     * Aggregates damage data by team
+     * Write static data to PostgreSQL (for use within foreachBatch)
      */
-    private static Dataset<Row> calculateTeamDamageStats(Dataset<Row> damagesDF) {
-        return damagesDF
-            .groupBy("attacker_team_name")
-            .agg(
-                count("*").as("total_hits"),
-                sum("damage_dealt").as("total_damage_dealt"),
-                approx_count_distinct("attacker_steamid").as("active_players"),
-                avg("damage_dealt").as("avg_damage_per_hit")
-            );
-    }
+    private static void writeStaticDataToPostgres(Dataset<Row> df, String table) {
+        // Add timestamp column to track when the statistics were recorded
+        Dataset<Row> batchWithTimestamp = df.withColumn("recorded_at", current_timestamp());
 
-    /**
-     * Calculate team statistics
-     * Aggregates data by team to show overall team performance
-     * Note: This method is no longer used directly due to streaming limitations
-     */
-    private static Dataset<Row> calculateTeamStats(Dataset<Row> killsDF, Dataset<Row> damagesDF) {
-        // This method is kept for reference but should not be used with streaming data
-        // Use calculateTeamKillStats and calculateTeamDamageStats separately instead
-        
-        // Team kill statistics
-        Dataset<Row> teamKillStats = calculateTeamKillStats(killsDF);
-        
-        // Team damage statistics
-        Dataset<Row> teamDamageStats = calculateTeamDamageStats(damagesDF);
-        
-        // Join the two datasets on team name
-        // Use coalesce to handle null values from outer join
+        // Create connection properties
+        Properties connectionProperties = new Properties();
+        connectionProperties.put("user", POSTGRES_USER);
+        connectionProperties.put("password", POSTGRES_PASSWORD);
+        connectionProperties.put("driver", POSTGRES_DRIVER);
 
-        return teamKillStats
-            .join(teamDamageStats,
-                  teamKillStats.col("killer_team_name").equalTo(teamDamageStats.col("attacker_team_name")),
-                  "outer")
-            .select(
-                teamKillStats.col("killer_team_name").as("team_name"),
-                teamKillStats.col("total_kills"),
-                teamKillStats.col("headshot_kills"),
-                teamKillStats.col("special_kills"),
-                teamKillStats.col("avg_kill_distance"),
-                teamKillStats.col("max_kill_distance"),
-                teamDamageStats.col("total_hits"),
-                teamDamageStats.col("total_damage_dealt"),
-                teamDamageStats.col("avg_damage_per_hit"),
-                // Use coalesce to handle null values from outer join
-                coalesce(teamKillStats.col("active_players"), teamDamageStats.col("active_players")).as("active_players")
-            )
-            .withColumn("headshot_percentage",
-                when(col("total_kills").gt(0),
-                    round(col("headshot_kills").divide(col("total_kills")).multiply(100), 2)
-                ).otherwise(0.0)
-            )
-            .withColumn("special_kill_percentage",
-                when(col("total_kills").gt(0),
-                    round(col("special_kills").divide(col("total_kills")).multiply(100), 2)
-                ).otherwise(0.0)
-            )
-            .withColumn("damage_per_kill",
-                when(col("total_kills").gt(0),
-                    round(col("total_damage_dealt").divide(col("total_kills")), 2)
-                ).otherwise(0.0)
-            );
-    }
+        // Create the table if it doesn't exist
+        try (java.sql.Connection conn = java.sql.DriverManager.getConnection(
+                POSTGRES_URL, POSTGRES_USER, POSTGRES_PASSWORD)) {
 
-    /**
-     * Calculate weapon usage statistics
-     * Analyzes which weapons are most effective
-     */
-    private static Dataset<Row> calculateWeaponStats(Dataset<Row> killsDF, Dataset<Row> damagesDF) {
-        // Weapon kill statistics
+            // Get the schema of the DataFrame with timestamp
+            StructType schema = batchWithTimestamp.schema();
 
-        return killsDF
-            .groupBy("weapon_name", "weapon_type")
-            .agg(
-                count("*").as("total_kills"),
-                sum(when(col("headshot").equalTo(1), 1).otherwise(0)).as("headshot_kills"),
-                approx_count_distinct("killer_steamid").as("unique_users"),
-                avg("distance").as("avg_kill_distance"),
-                max("distance").as("max_kill_distance"),
-                sum(when(col("special_kill"), 1).otherwise(0)).as("special_kills")
-            )
-            .withColumn("headshot_percentage",
-                when(col("total_kills").gt(0),
-                    round(col("headshot_kills").divide(col("total_kills")).multiply(100), 2)
-                ).otherwise(0.0)
-            )
-            .withColumn("special_kill_percentage",
-                when(col("total_kills").gt(0),
-                    round(col("special_kills").divide(col("total_kills")).multiply(100), 2)
-                ).otherwise(0.0)
-            );
-    }
+            // Build the CREATE TABLE statement
+            StringBuilder createTableSQL = new StringBuilder();
+            createTableSQL.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (");
 
-    /**
-     * Write streaming data to PostgreSQL
-     */
-    private static StreamingQuery writeToPostgres(Dataset<Row> df, String tableName) throws TimeoutException {
-        return df
-                .writeStream()
-                .foreachBatch((batchDF, batchId) -> {
-                    // Add timestamp column to track when the statistics were recorded
-                    Dataset<Row> batchWithTimestamp = batchDF.withColumn("recorded_at", current_timestamp());
-                    
-                    // Create connection properties
-                    Properties connectionProperties = new Properties();
-                    connectionProperties.put("user", POSTGRES_USER);
-                    connectionProperties.put("password", POSTGRES_PASSWORD);
-                    connectionProperties.put("driver", POSTGRES_DRIVER);
-                    
-                    // Create the table if it doesn't exist
-                    try (java.sql.Connection conn = java.sql.DriverManager.getConnection(
-                            POSTGRES_URL, POSTGRES_USER, POSTGRES_PASSWORD)) {
-                        
-                        // Get the schema of the DataFrame with timestamp
-                        StructType schema = batchWithTimestamp.schema();
-                        
-                        // Build the CREATE TABLE statement
-                        StringBuilder createTableSQL = new StringBuilder();
-                        createTableSQL.append("CREATE TABLE IF NOT EXISTS ").append(tableName).append(" (");
-                        
-                        // Add columns based on DataFrame schema
-                        for (int i = 0; i < schema.fields().length; i++) {
-                            StructField field = schema.fields()[i];
-                            String fieldName = field.name();
-                            String sqlType = getSQLType(field.dataType());
-                            
-                            createTableSQL.append(fieldName).append(" ").append(sqlType);
-                            
-                            // Add comma if not the last field
-                            if (i < schema.fields().length - 1) {
-                                createTableSQL.append(", ");
-                            }
-                        }
-                        
-                        createTableSQL.append(")");
-                        
-                        // Execute the CREATE TABLE statement
-                        try (java.sql.Statement stmt = conn.createStatement()) {
-                            stmt.execute(createTableSQL.toString());
-                            logger.info("Created table if not exists: " + tableName);
-                        }
-                    } catch (Exception e) {
-                        logger.error("Error creating table: " + tableName, e);
-                    }
-                    
-                    // Save the batch data to PostgreSQL
-                    batchWithTimestamp
-                        .write()
-                        .mode("append")  // Use append mode to add new data
-                        .jdbc(POSTGRES_URL, tableName, connectionProperties);
-                    
-                    logger.info("Batch " + batchId + " written to PostgreSQL table: " + tableName);
-                })
-                .outputMode("update")
-                .option("checkpointLocation", CHECKPOINT_LOCATION + "/" + tableName)
-                .start();
+            // Add columns based on DataFrame schema
+            for (int i = 0; i < schema.fields().length; i++) {
+                StructField field = schema.fields()[i];
+                String fieldName = field.name();
+                String sqlType = getSQLType(field.dataType());
+
+                createTableSQL.append(fieldName).append(" ").append(sqlType);
+
+                // Add comma if not the last field
+                if (i < schema.fields().length - 1) {
+                    createTableSQL.append(", ");
+                }
+            }
+
+            createTableSQL.append(")");
+
+            // Execute the CREATE TABLE statement
+            try (java.sql.Statement stmt = conn.createStatement()) {
+                stmt.execute(createTableSQL.toString());
+                logger.info("Created table if not exists: {}", table);
+            }
+        } catch (Exception e) {
+            logger.error("Error creating table: {}", table, e);
+        }
+
+        // Save the batch data to PostgreSQL
+        batchWithTimestamp
+            .write()
+            .mode("append")  // Use append mode to add new data
+            .jdbc(POSTGRES_URL, table, connectionProperties);
+
+        logger.info("Data written to PostgreSQL table: {}", table);
     }
     
     /**

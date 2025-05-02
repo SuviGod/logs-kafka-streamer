@@ -33,7 +33,6 @@ services:
 
       echo -e 'Creating kafka topics'
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic game.kills --replication-factor 1 --partitions 2
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic game.damages --replication-factor 1 --partitions 2
 
       echo -e 'Successfully created the following topics:'
       kafka-topics --bootstrap-server kafka:9092 --list
@@ -63,14 +62,17 @@ services:
       - POSTGRES_PASSWORD=admin
       
   grafana:
-    image: grafana/grafana-oss
+    image: grafana/grafana:latest
     container_name: grafana
     ports:
       - 3000:3000
+    environment:
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_BASIC_ENABLED=false
+      - GF_ENABLE_GZIP=true
     links:
       - db
-    env_file:
-      - ./grafana/config.monitoring
     volumes:
       - ./grafana/dashboard:/etc/extra-config/grafana
     command: ./etc/extra-config/grafana/post.sh

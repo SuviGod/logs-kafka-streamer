@@ -31,263 +31,264 @@
 			  "version": "11.6.1"
 			}
 		  ],
-		  "annotations": {
+		"annotations": {
 			"list": [
-			  {
-				"builtIn": 1,
-				"datasource": {
-				  "type": "grafana",
-				  "uid": "-- Grafana --"
-				},
-				"enable": true,
-				"hide": true,
-				"iconColor": "rgba(0, 211, 255, 1)",
-				"name": "Annotations & Alerts",
-				"type": "dashboard"
-			  }
-			]
-		  },
-		  "editable": true,
-		  "fiscalYearStartMonth": 0,
-		  "graphTooltip": 0,
-		  "id": null,
-		  "links": [],
-		  "panels": [
-			{
-			  "datasource": {
-				"type": "grafana-postgresql-datasource",
-				"uid": "${DS_GRAFANA-POSTGRESQL-DATASOURCE}"
-			  },
-			  "fieldConfig": {
-				"defaults": {
-				  "color": {
-					"mode": "palette-classic"
-				  },
-				  "custom": {
-					"axisBorderShow": false,
-					"axisCenteredZero": false,
-					"axisColorMode": "text",
-					"axisLabel": "",
-					"axisPlacement": "auto",
-					"fillOpacity": 80,
-					"gradientMode": "none",
-					"hideFrom": {
-					  "legend": false,
-					  "tooltip": false,
-					  "viz": false
-					},
-					"lineWidth": 1,
-					"scaleDistribution": {
-					  "type": "linear"
-					},
-					"thresholdsStyle": {
-					  "mode": "off"
-					}
-				  },
-				  "mappings": [],
-				  "thresholds": {
-					"mode": "absolute",
-					"steps": [
-					  {
-						"color": "green"
-					  },
-					  {
-						"color": "red",
-						"value": 80
-					  }
-					]
-				  }
-				},
-				"overrides": []
-			  },
-			  "gridPos": {
-				"h": 8,
-				"w": 12,
-				"x": 0,
-				"y": 0
-			  },
-			  "id": 2,
-			  "options": {
-				"barRadius": 0,
-				"barWidth": 0.97,
-				"fullHighlight": false,
-				"groupWidth": 0.7,
-				"legend": {
-				  "calcs": [],
-				  "displayMode": "list",
-				  "placement": "bottom",
-				  "showLegend": true
-				},
-				"orientation": "auto",
-				"showValue": "auto",
-				"stacking": "none",
-				"tooltip": {
-				  "hideZeros": false,
-				  "mode": "single",
-				  "sort": "none"
-				},
-				"xTickLabelRotation": 0,
-				"xTickLabelSpacing": 0
-			  },
-			  "pluginVersion": "11.6.1",
-			  "targets": [
 				{
-				  "datasource": {
+					"builtIn": 1,
+					"datasource": {
+						"type": "grafana",
+						"uid": "-- Grafana --"
+					},
+					"enable": true,
+					"hide": true,
+					"iconColor": "rgba(0, 211, 255, 1)",
+					"name": "Annotations & Alerts",
+					"type": "dashboard"
+				}
+			]
+		},
+		"editable": true,
+		"fiscalYearStartMonth": 0,
+		"graphTooltip": 0,
+		"id": null,
+		"links": [],
+		"panels": [
+			{
+				"datasource": {
 					"type": "grafana-postgresql-datasource",
 					"uid": "${DS_GRAFANA-POSTGRESQL-DATASOURCE}"
-				  },
-				  "editorMode": "code",
-				  "format": "table",
-				  "rawQuery": true,
-				  "rawSql": "SELECT killer_name, SUM(unique_victims) AS unique_victims, SUM(total_kills) AS total_kills, SUM(special_kills) AS special_kills, SUM(headshot_kills) AS headshot_kills, SUM(wallbang_kills) AS wallbang_kills, SUM(flash_assisted_kills) AS flash_assisted_kills, SUM(no_scope_kills) AS no_scope_kills, SUM(rounds_with_kills) AS rounds_with_kills, SUM(through_smoke_kills) AS through_smoke_kills \r\nFROM player_kill_stats\r\nWHERE killer_name IS NOT NULL\r\nGROUP BY killer_name",
-				  "refId": "A",
-				  "sql": {
-					"columns": [
-					  {
-						"parameters": [],
-						"type": "function"
-					  }
-					],
-					"groupBy": [
-					  {
-						"property": {
-						  "type": "string"
+				},
+				"fieldConfig": {
+					"defaults": {
+						"color": {
+							"mode": "palette-classic"
 						},
-						"type": "groupBy"
-					  }
-					],
-					"limit": 50
-				  }
-				}
-			  ],
-			  "title": "Player Stats",
-			  "type": "barchart"
+						"custom": {
+							"axisBorderShow": false,
+							"axisCenteredZero": false,
+							"axisColorMode": "text",
+							"axisLabel": "",
+							"axisPlacement": "auto",
+							"barAlignment": 0,
+							"barWidthFactor": 0.6,
+							"drawStyle": "line",
+							"fillOpacity": 0,
+							"gradientMode": "none",
+							"hideFrom": {
+								"legend": false,
+								"tooltip": false,
+								"viz": false
+							},
+							"insertNulls": false,
+							"lineInterpolation": "linear",
+							"lineWidth": 1,
+							"pointSize": 5,
+							"scaleDistribution": {
+								"type": "linear"
+							},
+							"showPoints": "auto",
+							"spanNulls": false,
+							"stacking": {
+								"group": "A",
+								"mode": "none"
+							},
+							"thresholdsStyle": {
+								"mode": "off"
+							}
+						},
+						"mappings": [],
+						"thresholds": {
+							"mode": "absolute",
+							"steps": [
+								{
+									"color": "green"
+								},
+								{
+									"color": "red",
+									"value": 80
+								}
+							]
+						}
+					},
+					"overrides": []
+				},
+				"gridPos": {
+					"h": 8,
+					"w": 12,
+					"x": 0,
+					"y": 0
+				},
+				"id": 3,
+				"options": {
+					"legend": {
+						"calcs": [],
+						"displayMode": "list",
+						"placement": "bottom",
+						"showLegend": true
+					},
+					"tooltip": {
+						"hideZeros": false,
+						"mode": "single",
+						"sort": "none"
+					},
+					"xField": "timestamp_seconds"
+				},
+				"pluginVersion": "11.6.1",
+				"targets": [
+					{
+						"editorMode": "code",
+						"format": "table",
+						"rawQuery": true,
+						"rawSql": "SELECT distinct kd_ratio, timestamp_seconds\r\nFROM player_stats\r\nWHERE timestamp_seconds IS NOT NULL\r\nORDER BY timestamp_seconds ASC ",
+						"refId": "A",
+						"sql": {
+							"columns": [
+								{
+									"parameters": [],
+									"type": "function"
+								}
+							],
+							"groupBy": [
+								{
+									"property": {
+										"type": "string"
+									},
+									"type": "groupBy"
+								}
+							],
+							"limit": 50
+						}
+					}
+				],
+				"title": "Panel Title",
+				"type": "trend"
 			},
 			{
-			  "datasource": {
-				"type": "grafana-postgresql-datasource",
-				"uid": "${DS_GRAFANA-POSTGRESQL-DATASOURCE}"
-			  },
-			  "fieldConfig": {
-				"defaults": {
-				  "color": {
-					"mode": "palette-classic"
-				  },
-				  "custom": {
-					"axisBorderShow": false,
-					"axisCenteredZero": false,
-					"axisColorMode": "text",
-					"axisLabel": "",
-					"axisPlacement": "auto",
-					"fillOpacity": 80,
-					"gradientMode": "none",
-					"hideFrom": {
-					  "legend": false,
-					  "tooltip": false,
-					  "viz": false
-					},
-					"lineWidth": 1,
-					"scaleDistribution": {
-					  "type": "linear"
-					},
-					"thresholdsStyle": {
-					  "mode": "off"
-					}
-				  },
-				  "mappings": [],
-				  "thresholds": {
-					"mode": "absolute",
-					"steps": [
-					  {
-						"color": "green"
-					  },
-					  {
-						"color": "red",
-						"value": 80
-					  }
-					]
-				  }
-				},
-				"overrides": []
-			  },
-			  "gridPos": {
-				"h": 8,
-				"w": 12,
-				"x": 0,
-				"y": 8
-			  },
-			  "id": 1,
-			  "options": {
-				"barRadius": 0,
-				"barWidth": 0.97,
-				"fullHighlight": false,
-				"groupWidth": 0.7,
-				"legend": {
-				  "calcs": [],
-				  "displayMode": "list",
-				  "placement": "bottom",
-				  "showLegend": true
-				},
-				"orientation": "auto",
-				"showValue": "auto",
-				"stacking": "none",
-				"tooltip": {
-				  "hideZeros": false,
-				  "mode": "single",
-				  "sort": "none"
-				},
-				"xTickLabelRotation": 0,
-				"xTickLabelSpacing": 0
-			  },
-			  "pluginVersion": "11.6.1",
-			  "targets": [
-				{
-				  "datasource": {
+				"datasource": {
 					"type": "grafana-postgresql-datasource",
 					"uid": "${DS_GRAFANA-POSTGRESQL-DATASOURCE}"
-				  },
-				  "editorMode": "code",
-				  "format": "table",
-				  "rawQuery": true,
-				  "rawSql": "SELECT killer_team_name, SUM(total_kills) AS total_kills, SUM(headshot_kills) AS headshot_kills, SUM(special_kills) AS special_kills, SUM(avg_kill_distance) AS avg_kill_distance, SUM(max_kill_distance) AS max_kill_distance\r\nFROM team_kill_stats \r\nWHERE killer_team_name IS NOT NULL\r\nGROUP BY killer_team_name",
-				  "refId": "A",
-				  "sql": {
-					"columns": [
-					  {
-						"parameters": [],
-						"type": "function"
-					  }
-					],
-					"groupBy": [
-					  {
-						"property": {
-						  "type": "string"
+				},
+				"fieldConfig": {
+					"defaults": {
+						"color": {
+							"mode": "palette-classic"
 						},
-						"type": "groupBy"
-					  }
-					],
-					"limit": 50
-				  }
-				}
-			  ],
-			  "title": "Team Stats",
-			  "type": "barchart"
+						"custom": {
+							"axisBorderShow": false,
+							"axisCenteredZero": false,
+							"axisColorMode": "text",
+							"axisLabel": "",
+							"axisPlacement": "auto",
+							"fillOpacity": 80,
+							"gradientMode": "none",
+							"hideFrom": {
+								"legend": false,
+								"tooltip": false,
+								"viz": false
+							},
+							"lineWidth": 1,
+							"scaleDistribution": {
+								"type": "linear"
+							},
+							"thresholdsStyle": {
+								"mode": "off"
+							}
+						},
+						"mappings": [],
+						"thresholds": {
+							"mode": "absolute",
+							"steps": [
+								{
+									"color": "green"
+								},
+								{
+									"color": "red",
+									"value": 80
+								}
+							]
+						}
+					},
+					"overrides": []
+				},
+				"gridPos": {
+					"h": 8,
+					"w": 12,
+					"x": 0,
+					"y": 8
+				},
+				"id": 2,
+				"options": {
+					"barRadius": 0,
+					"barWidth": 0.97,
+					"fullHighlight": false,
+					"groupWidth": 0.7,
+					"legend": {
+						"calcs": [],
+						"displayMode": "list",
+						"placement": "bottom",
+						"showLegend": true
+					},
+					"orientation": "auto",
+					"showValue": "auto",
+					"stacking": "none",
+					"tooltip": {
+						"hideZeros": false,
+						"mode": "single",
+						"sort": "none"
+					},
+					"xTickLabelRotation": 0,
+					"xTickLabelSpacing": 0
+				},
+				"pluginVersion": "11.6.1",
+				"targets": [
+					{
+						"datasource": {
+							"type": "grafana-postgresql-datasource",
+							"uid": "${DS_GRAFANA-POSTGRESQL-DATASOURCE}"
+						},
+						"editorMode": "code",
+						"format": "table",
+						"rawQuery": true,
+						"rawSql": "SELECT player_name, SUM(kills) AS kills, SUM(deaths) AS deaths, SUM(assists) AS assists, SUM(kd_ratio) AS kd_ratio, SUM(headshot_percentage) AS headshots_persantage\r\nFROM player_stats\r\nWHERE player_name IS NOT NULL\r\nGROUP BY player_name",
+						"refId": "A",
+						"sql": {
+							"columns": [
+								{
+									"parameters": [],
+									"type": "function"
+								}
+							],
+							"groupBy": [
+								{
+									"property": {
+										"type": "string"
+									},
+									"type": "groupBy"
+								}
+							],
+							"limit": 50
+						}
+					}
+				],
+				"title": "Player Stats",
+				"type": "barchart"
 			}
-		  ],
-		  "schemaVersion": 41,
-		  "tags": [],
-		  "templating": {
+		],
+		"preload": false,
+		"refresh": "5s",
+		"schemaVersion": 41,
+		"tags": [],
+		"templating": {
 			"list": []
-		  },
-		  "time": {
+		},
+		"time": {
 			"from": "2025-04-25T12:11:15.544Z",
 			"to": "2025-04-25T12:11:15.544Z"
-		  },
-		  "timepicker": {},
-		  "timezone": "browser",
-		  "title": "Counter Strike",
-		  "uid": "dejyv6z8ogmwwc",
-		  "version": 1,
-		  "weekStart": ""
+		},
+		"timepicker": {},
+		"timezone": "browser",
+		"title": "Counter Strike",
+		"uid": "dejyv6z8ogmwwc",
+		"version": 1
 		}
 }

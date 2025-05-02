@@ -85,7 +85,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifest>
-                            <mainClass>com.example.SparkKafkaStreamingJob</mainClass>
+                            <mainClass>dis.App</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
