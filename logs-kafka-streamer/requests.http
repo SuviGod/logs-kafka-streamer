@@ -1,0 +1,19 @@
+### Start streaming
+POST http://localhost:8081/api/streaming/start?inputFolder=C:\Users\vanom\IdeaProjects\DIS1\game-logs
+Content-Type: application/json
+
+### Stop streaming
+POST http://localhost:8081/api/streaming/stop
+Content-Type: application/json
+
+### Get streaming status
+GET http://localhost:8081/api/streaming/status
+Accept: application/json
+
+### Read CSV file
+GET http://localhost:8081/api/csv?filePath=C:\Users\vanom\IdeaProjects\DIS1\game-logs\liquid-vs-natus-vincere-m1-anubis_damages.csv
+Accept: application/json
+
+### Read players file
+GET http://localhost:8081/api/players?folderPath=C:\Users\vanom\IdeaProjects\DIS1\game-logs
+Accept: application/json

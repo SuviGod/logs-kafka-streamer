@@ -1,6 +1,5 @@
 package dis.service;
 
-import dis.domain.StreamingService;
 import dis.infrastructure.KafkaProducerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,19 +20,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Implementation of the StreamingService that streams data from CSV files to Kafka topics.
  */
 @Service
-public class CsvKafkaStreamingService implements StreamingService {
+public class StreamingService {
 
-    private static final Logger logger = LoggerFactory.getLogger(CsvKafkaStreamingService.class);
+    private static final Logger logger = LoggerFactory.getLogger(StreamingService.class);
     private final KafkaProducerService kafkaProducerService;
     private final AtomicBoolean isStreaming = new AtomicBoolean(false);
     private ExecutorService executorService;
 
     @Autowired
-    public CsvKafkaStreamingService(KafkaProducerService kafkaProducerService) {
+    public StreamingService(KafkaProducerService kafkaProducerService) {
         this.kafkaProducerService = kafkaProducerService;
     }
 
-    @Override
     public boolean startStreaming(String inputFolder) {
         if (isStreaming.get()) {
             logger.warn("Streaming is already in progress");
@@ -56,7 +54,6 @@ public class CsvKafkaStreamingService implements StreamingService {
         return true;
     }
 
-    @Override
     public boolean stopStreaming() {
         if (!isStreaming.get()) {
             logger.warn("No active streaming to stop");
@@ -70,7 +67,6 @@ public class CsvKafkaStreamingService implements StreamingService {
         return true;
     }
 
-    @Override
     public boolean isStreaming() {
         return isStreaming.get();
     }
@@ -79,7 +75,9 @@ public class CsvKafkaStreamingService implements StreamingService {
         logger.debug("Using input folder: {}", inputFolder);
 
         // Collect all CSV files in the input folder
-        File[] logFiles = new File(inputFolder).listFiles((dir, name) -> name.endsWith(".csv"));
+        File[] logFiles = new File(inputFolder)
+                .listFiles((dir, name) ->
+                        name.endsWith("_kills.csv") || name.endsWith("_damages.csv"));
         if (logFiles == null || logFiles.length == 0) {
             logger.info("No CSV files found in the folder: {}", inputFolder);
             return;
